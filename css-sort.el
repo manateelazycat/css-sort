@@ -6,8 +6,8 @@
 ;; Maintainer: Andy Stewart <lazycat.manatee@gmail.com>
 ;; Copyright (C) 2018, Andy Stewart, all rights reserved.
 ;; Created: 2018-07-13 08:59:01
-;; Version: 0.3
-;; Last-Updated: 2018-11-21 09:45:58
+;; Version: 0.4
+;; Last-Updated: 2018-11-21 19:48:40
 ;;           By: Andy Stewart
 ;; URL: http://www.emacswiki.org/emacs/download/css-sort.el
 ;; Keywords:
@@ -65,7 +65,8 @@
 ;;; Change log:
 ;;
 ;; 2018/11/21
-;;	* Skip @ start function.
+;;      * Skip @ start function.
+;;      * Support sort @include statement now!
 ;;
 ;; 2018/11/20
 ;;      * CSS attributable order follow http://alloyteam.github.io/CodeGuide/#css-declaration-order
@@ -429,22 +430,24 @@
       "")))
 
 (defun css-sort-lines-in-region (start end)
-  (split-string (buffer-substring start end) "[\n]"))
+  (split-string (buffer-substring-no-properties start end) "[\n]"))
 
 (defun css-sort-beginning-of-attribute-block (start)
-  (goto-char start)
-  (search-backward "{")
-  (forward-line 1)
-  (beginning-of-line)
-  (point))
+  (save-excursion
+    (goto-char start)
+    (search-backward "{")
+    (forward-line 1)
+    (beginning-of-line)
+    (point)))
 
 (defun css-sort-end-of-attribute-block (start)
-  (goto-char start)
-  (re-search-forward "[{}]")
-  (beginning-of-line)
-  (search-backward-regexp "[^ \t\n]" nil t)
-  (forward-char)
-  (point))
+  (save-excursion
+    (goto-char start)
+    (re-search-forward "[{}]")
+    (beginning-of-line)
+    (search-backward-regexp "[^ \t\n]" nil t)
+    (forward-char)
+    (point)))
 
 (defun css-sort-attribute-compare (a b)
   (let* ((trim-a (string-trim a))
@@ -472,30 +475,77 @@
       (< (css-sort-attribute-index a)
          (css-sort-attribute-index b))))))
 
-(defun css-sort-is-at-rule-p ()
+(defun css-sort-in-at-rule-line-p ()
   (save-excursion
-    (let ((line-content (string-trim (buffer-substring (beginning-of-thing 'line) (end-of-thing 'line)))))
+    (let ((line-content (string-trim (css-sort-current-line-content))))
       (string-prefix-p "@" line-content)
       )))
+
+(defun css-sort-current-line-content ()
+  (buffer-substring-no-properties
+   (save-excursion
+     (beginning-of-line)
+     (point))
+   (save-excursion
+     (end-of-line)
+     (point))))
+
+(defun css-sort-end-of-include-sexp ()
+  (save-excursion
+    (ignore-errors
+      ;; It's a hacking way to get end position of '@include' statement.
+      ;;
+      ;; Forward sexp 10000 times, the cursor will automatically stop when it encounters the end of the include statement.
+      (forward-sexp 10000))
+    (point)))
+
+(defun css-sort-parse-lines (start end)
+  (let (css-regular-blocks
+        css-at-prefix-blocks)
+    (save-excursion
+      (goto-char start)
+      (while (< (point) end)
+        ;; Collect CSS attribute statements.
+        (if (css-sort-in-at-rule-line-p)
+            (let ((at-prefix-start (save-excursion
+                                     (beginning-of-line)
+                                     (point)))
+                  (at-prefix-end (css-sort-end-of-include-sexp)))
+              (add-to-list 'css-at-prefix-blocks (buffer-substring-no-properties at-prefix-start at-prefix-end) t)
+              (goto-char at-prefix-end))
+          (add-to-list 'css-regular-blocks (css-sort-current-line-content) t))
+        ;; Move to next line.
+        (forward-line)
+        (beginning-of-line)))
+    ;; Return CSS attribute statements.
+    (cons css-regular-blocks css-at-prefix-blocks)))
 
 (defun css-sort ()
   (interactive)
   (save-excursion
     (goto-char (point-min))
     (while (re-search-forward "\\s-+{" (point-max) t)
-      (if (css-sort-is-at-rule-p)
+      (if (css-sort-in-at-rule-line-p)
+          ;; Skip line that start with @
           (up-list)
-        (save-excursion
-          (let* ((current (point))
-                 (start (css-sort-beginning-of-attribute-block current))
-                 (end (css-sort-end-of-attribute-block current))
-                 (lines (css-sort-lines-in-region start end))
-                 (sorted-lines (sort lines #'css-sort-attribute-compare)))
-            (delete-region start end)
-            (save-excursion
-              (goto-char start)
-              (insert (mapconcat 'identity sorted-lines "\n"))
-              )))))))
+        ;; Sort CSS attribute order.
+        (let* ((start (css-sort-beginning-of-attribute-block (point)))
+               (end (css-sort-end-of-attribute-block (point)))
+               (parse-result (css-sort-parse-lines start end))
+               (regular-lines (car parse-result))
+               (at-prefix-lines (cdr parse-result)))
+          ;; Delete all attributes.
+          (delete-region start end)
+          ;; Insert @include attributes.
+          (goto-char start)
+          (insert (mapconcat 'identity at-prefix-lines "\n"))
+          ;; Insert one return line between @include attributes and regular attributes.
+          (when (and (> (length at-prefix-lines) 0)
+                     (> (length regular-lines) 0))
+            (insert "\n"))
+          ;; Insert regular attributes.
+          (insert (mapconcat 'identity (sort regular-lines #'css-sort-attribute-compare) "\n"))
+          )))))
 
 (provide 'css-sort)
 
