@@ -6,8 +6,8 @@
 ;; Maintainer: Andy Stewart <lazycat.manatee@gmail.com>
 ;; Copyright (C) 2018, Andy Stewart, all rights reserved.
 ;; Created: 2018-07-13 08:59:01
-;; Version: 0.2
-;; Last-Updated: 2018-07-13 12:29:49
+;; Version: 0.3
+;; Last-Updated: 2018-11-21 09:45:58
 ;;           By: Andy Stewart
 ;; URL: http://www.emacswiki.org/emacs/download/css-sort.el
 ;; Keywords:
@@ -63,6 +63,9 @@
 ;;
 
 ;;; Change log:
+;;
+;; 2018/11/21
+;;	* Skip @ start function.
 ;;
 ;; 2018/11/20
 ;;      * CSS attributable order follow http://alloyteam.github.io/CodeGuide/#css-declaration-order
@@ -469,22 +472,30 @@
       (< (css-sort-attribute-index a)
          (css-sort-attribute-index b))))))
 
+(defun css-sort-is-at-rule-p ()
+  (save-excursion
+    (let ((line-content (string-trim (buffer-substring (beginning-of-thing 'line) (end-of-thing 'line)))))
+      (string-prefix-p "@" line-content)
+      )))
+
 (defun css-sort ()
   (interactive)
   (save-excursion
     (goto-char (point-min))
     (while (re-search-forward "\\s-+{" (point-max) t)
-      (save-excursion
-        (let* ((current (point))
-               (start (css-sort-beginning-of-attribute-block current))
-               (end (css-sort-end-of-attribute-block current))
-               (lines (css-sort-lines-in-region start end))
-               (sorted-lines (sort lines #'css-sort-attribute-compare)))
-          (delete-region start end)
-          (save-excursion
-            (goto-char start)
-            (insert (mapconcat 'identity sorted-lines "\n"))
-            ))))))
+      (if (css-sort-is-at-rule-p)
+          (up-list)
+        (save-excursion
+          (let* ((current (point))
+                 (start (css-sort-beginning-of-attribute-block current))
+                 (end (css-sort-end-of-attribute-block current))
+                 (lines (css-sort-lines-in-region start end))
+                 (sorted-lines (sort lines #'css-sort-attribute-compare)))
+            (delete-region start end)
+            (save-excursion
+              (goto-char start)
+              (insert (mapconcat 'identity sorted-lines "\n"))
+              )))))))
 
 (provide 'css-sort)
 
