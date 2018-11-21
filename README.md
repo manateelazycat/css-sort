@@ -5,7 +5,7 @@ It has the following advantages:
 
 * You don't need to select the sorted area, it can sort all the attributes automatically with one command "css-sort".
 * Sort CSS attributes exactly in accordance with [CSS sorting rules](http://alloyteam.github.io/CodeGuide/#css-declaration-order)
-* Attributes starting with @ are placed at last, such as, @include attribute.
+* The rule starting with ◎ is automatically skipped and not sorted.
 * ...
 
 ## Installation
