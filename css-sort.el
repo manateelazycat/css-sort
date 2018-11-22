@@ -6,8 +6,8 @@
 ;; Maintainer: Andy Stewart <lazycat.manatee@gmail.com>
 ;; Copyright (C) 2018, Andy Stewart, all rights reserved.
 ;; Created: 2018-07-13 08:59:01
-;; Version: 0.4
-;; Last-Updated: 2018-11-21 19:48:40
+;; Version: 0.5
+;; Last-Updated: 2018-11-22 13:51:20
 ;;           By: Andy Stewart
 ;; URL: http://www.emacswiki.org/emacs/download/css-sort.el
 ;; Keywords:
@@ -63,6 +63,9 @@
 ;;
 
 ;;; Change log:
+;;
+;; 2018/11/22
+;;	* Fix duplicate attribute issue: https://github.com/manateelazycat/css-sort/issues/1
 ;;
 ;; 2018/11/21
 ;;      * Skip @ start function.
@@ -490,13 +493,17 @@
      (end-of-line)
      (point))))
 
-(defun css-sort-end-of-include-sexp ()
+(defun css-sort-end-of-include-sexp (end)
   (save-excursion
-    (ignore-errors
-      ;; It's a hacking way to get end position of '@include' statement.
-      ;;
-      ;; Forward sexp 10000 times, the cursor will automatically stop when it encounters the end of the include statement.
-      (forward-sexp 10000))
+    (let (point-before-move)
+      (ignore-errors
+        ;; It's a hacking way to get end position of '@include' statement.
+        (while (< (point) end)
+          (setq point-before-move (point))
+          (forward-sexp)))
+      ;; Restore point if `forward-sexp' out bound.
+      (when (> (point) end)
+        (goto-char point-before-move)))
     (point)))
 
 (defun css-sort-parse-lines (start end)
@@ -510,7 +517,7 @@
             (let ((at-prefix-start (save-excursion
                                      (beginning-of-line)
                                      (point)))
-                  (at-prefix-end (css-sort-end-of-include-sexp)))
+                  (at-prefix-end (css-sort-end-of-include-sexp end)))
               (add-to-list 'css-at-prefix-blocks (buffer-substring-no-properties at-prefix-start at-prefix-end) t)
               (goto-char at-prefix-end))
           (add-to-list 'css-regular-blocks (css-sort-current-line-content) t))
